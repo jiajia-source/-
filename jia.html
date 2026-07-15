@@ -12,39 +12,8 @@
         <input class="JIA-input" type="text" placeholder="add" />
         <div class="JIA-button" onclick="addTodo()" >ADD JIAJIA</div> 
     </div>
-    <div id="todoList">
-    <div class="item completed">  <!-- 一个盒子拥有两个类名 俩个类名的属性它都会拥有-->
-    <div>
-        <input type="checkbox" onchange="toggleDone(this)" checked />
-        <span class="name">想我</span>   <!-- div默认是竖着排，span默认是横着排 -->
-    </div>
-       
-        <div class="del" onclick="deleteItem(this)">over</div>
-
-    </div>
-
-    
-    <div class="item">
-        <div>
-        <input type="checkbox" onchange="toggleDone(this)" />
-        <span class="name">想我</span>   <!-- div默认是竖着排，span默认是横着排 -->
-        </div>
-        
-        <div class="del" onclick="deleteItem(this)">over</div>
-
-    </div>
-
-    
-    <div class="item">
-        <div>
-        <input type="checkbox" onchange="toggleDone(this)" />
-        <span class="name">想我</span>   <!-- div默认是竖着排，span默认是横着排 -->
-        </div>
-        
-        <div class="del" onclick="deleteItem(this)">over</div>
-
-    </div>
-  </div>
+    <!-- 清空了静态待办，改为从数据库动态加载 -->
+    <div id="todoList"></div>
 </div>
     
 <style>
@@ -90,7 +59,7 @@
     /* 搜索框白色部分*/
     .JIA-input{
        margin-bottom: 20px; /* 输入框与代办的距离*/
-       padding: left 15px; /* 输入框默认字里左边边框的距离*/
+       padding-left: 15px; /* 输入框默认字里左边边框的距离*/
        border: 1px solid #dfe1e5;  /* 边框大小，类型，颜色*/
        outline: none;  /* 边框的线没有颜色*/
        width: 60%; /* 宽高 （用百分比能更好的适应网页宽度，例如小框之后）*/
@@ -111,7 +80,7 @@
 /* 白色框部分*/        
    .JIA-app{
     width: 98%;  /* 盒子宽度占网页宽度的98% */
-    height: 400px;  /* 固定高度400像素 */
+    height: auto;  /* 改成自适应高度，内容多了能撑开 */
     padding-top: 30px;  /* 顶部往里塞30px的空白，内容往下退 */
     box-sizing: border-box; /* padding和边框算进总宽高里，别往外膨胀 */
     background-color: #ffff; /* 背景白色*/
@@ -122,7 +91,7 @@
    }
 /* 标题部分 */
    .title{
-      font: size 30px;    /* 字号：文字大小30像素 */
+      font-size: 30px;    /* 字号：文字大小30像素 */
       font-weight: 700;   /* 字重：700是加粗，400是正常 */
       text-align: center; /* 文字对齐：居中显示 */
    }
@@ -137,47 +106,122 @@
     }
    
 </style>
+
+<!-- 引入 Supabase 官方 JS 库 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
+    // ====== 这里填你自己的信息 ======
+    // 注意：URL 填项目根地址，不要带 /rest/v1 后缀！
+    const supabaseUrl = 'https://axaklflwzrsilmzeaq.supabase.co';
+    const supabaseKey = 'sb_publishable_-mhXxjr5SMEY1oc5oFzO4A_t7O-8OyX';
+    // =================================
+
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
     const input = document.querySelector('.JIA-input');
+    const todoList = document.getElementById('todoList');
 
     // 回车添加
     input.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') addTodo();
     });
 
-    function addTodo() {
+    // 页面加载时，从数据库拉取所有待办并渲染
+    window.onload = function() {
+        fetchTodos();
+    }
+
+    // 从数据库查询待办列表
+    async function fetchTodos() {
+        const { data, error } = await supabase
+            .from('todo_list')
+            .select('*')
+            .order('created_at', { ascending: true }); // 按创建时间正序排列
+
+        if (error) {
+            console.error('加载失败:', error);
+            return;
+        }
+
+        renderList(data);
+    }
+
+    // 渲染待办列表到页面
+    function renderList(list) {
+        todoList.innerHTML = '';
+        list.forEach(item => {
+            const div = document.createElement('div');
+            div.className = `item ${item.completed ? 'completed' : ''}`;
+            div.dataset.id = item.id; // 保存数据库id，用于更新和删除
+            div.innerHTML = `
+                <div>
+                    <input type="checkbox" onchange="toggleDone(this)" ${item.completed ? 'checked' : ''} />
+                    <span class="name">${item.content}</span>
+                </div>
+                <div class="del" onclick="deleteItem(this)">over</div>
+            `;
+            todoList.appendChild(div);
+        });
+    }
+
+    // 添加待办：写入数据库
+    async function addTodo() {
         const text = input.value.trim();
         if (!text) return;
 
-        const list = document.getElementById('todoList');
-        const item = document.createElement('div');
-        item.className = 'item';
-        item.innerHTML = `
-            <div>
-                <input type="checkbox" onchange="toggleDone(this)" />
-                <span class="name">${text}</span>
-            </div>
-            <div class="del" onclick="deleteItem(this)">over</div>
-        `;
+        const { error } = await supabase
+            .from('todo_list')
+            .insert([{ content: text, completed: false }]);
 
-        list.appendChild(item);
+        if (error) {
+            console.error('添加失败:', error);
+            return;
+        }
+
         input.value = '';
         input.focus();
+        fetchTodos(); // 重新拉取最新列表
     }
 
-    // 勾选划掉
-    function toggleDone(checkbox) {
+    // 勾选/取消勾选：更新数据库状态
+    async function toggleDone(checkbox) {
         const item = checkbox.closest('.item');
-        if (checkbox.checked) {
+        const id = Number(item.dataset.id);
+        const isCompleted = checkbox.checked;
+
+        const { error } = await supabase
+            .from('todo_list')
+            .update({ completed: isCompleted })
+            .eq('id', id);
+
+        if (error) {
+            console.error('更新失败:', error);
+            return;
+        }
+
+        if (isCompleted) {
             item.classList.add('completed');
         } else {
             item.classList.remove('completed');
         }
     }
 
-    // 点击 over 删除
-    function deleteItem(delBtn) {
-        delBtn.closest('.item').remove();
+    // 删除待办：从数据库删除
+    async function deleteItem(delBtn) {
+        const item = delBtn.closest('.item');
+        const id = Number(item.dataset.id);
+
+        const { error } = await supabase
+            .from('todo_list')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('删除失败:', error);
+            return;
+        }
+
+        item.remove();
     }
 </script>
 
